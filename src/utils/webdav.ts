@@ -6,7 +6,6 @@ export class WebDAVStorage {
   private baseDir: string = '/photos';
 
   constructor() {
-    // Replace these with your WebDAV server details
     const webdavUrl = import.meta.env.VITE_WEBDAV_URL || '';
     const username = import.meta.env.VITE_WEBDAV_USERNAME || '';
     const password = import.meta.env.VITE_WEBDAV_PASSWORD || '';
@@ -33,20 +32,33 @@ export class WebDAVStorage {
     await this.ensureBaseDir();
     
     for (const photo of photos) {
-      const photoPath = `${this.baseDir}/${photo.id}_${photo.name}`;
-      const photoBlob = new Blob([await photo.file.arrayBuffer()]);
-      await this.client.putFileContents(photoPath, photoBlob);
+      try {
+        // Convert File to ArrayBuffer
+        const buffer = await photo.file.arrayBuffer();
+        const photoPath = `${this.baseDir}/${photo.id}_${photo.name}`;
+        
+        // Upload the photo file as binary data
+        await this.client.putFileContents(photoPath, buffer, {
+          contentLength: buffer.byteLength,
+          overwrite: true
+        });
 
-      // Save metadata
-      const metadataPath = `${this.baseDir}/${photo.id}_metadata.json`;
-      const metadata = {
-        id: photo.id,
-        name: photo.name,
-        size: photo.size,
-        type: photo.type,
-        lastModified: photo.lastModified,
-      };
-      await this.client.putFileContents(metadataPath, JSON.stringify(metadata));
+        // Save metadata
+        const metadataPath = `${this.baseDir}/${photo.id}_metadata.json`;
+        const metadata = {
+          id: photo.id,
+          name: photo.name,
+          size: photo.size,
+          type: photo.type,
+          lastModified: photo.lastModified,
+        };
+        await this.client.putFileContents(metadataPath, JSON.stringify(metadata), {
+          overwrite: true
+        });
+      } catch (error) {
+        console.error(`Error saving photo ${photo.name}:`, error);
+        throw error;
+      }
     }
   }
 
@@ -62,19 +74,23 @@ export class WebDAVStorage {
           const metadataContent = await this.client.getFileContents(item.filename, { format: 'text' });
           const metadata = JSON.parse(metadataContent as string);
           
-          const photoPath = `${this.baseDir}/${metadata.id}_${metadata.name}`;
-          const photoContent = await this.client.getFileContents(photoPath);
+          const photoFileName = `${metadata.id}_${metadata.name}`;
+          const photoPath = `${this.baseDir}/${photoFileName}`;
+          const photoContent = await this.client.getFileContents(photoPath, { format: 'binary' });
           
-          const file = new File([photoContent as Blob], metadata.name, {
-            type: metadata.type,
-            lastModified: metadata.lastModified,
-          });
+          if (photoContent instanceof ArrayBuffer) {
+            const blob = new Blob([photoContent], { type: metadata.type });
+            const file = new File([blob], metadata.name, {
+              type: metadata.type,
+              lastModified: metadata.lastModified,
+            });
 
-          photos.push({
-            ...metadata,
-            file,
-            url: URL.createObjectURL(file),
-          });
+            photos.push({
+              ...metadata,
+              file,
+              url: URL.createObjectURL(file),
+            });
+          }
         }
       }
       
@@ -86,22 +102,32 @@ export class WebDAVStorage {
   }
 
   async deletePhoto(id: string): Promise<void> {
-    const contents = await this.client.getDirectoryContents(this.baseDir);
-    const photoFile = contents.find(item => item.filename.startsWith(`${id}_`) && !item.filename.endsWith('_metadata.json'));
-    const metadataFile = contents.find(item => item.filename === `${id}_metadata.json`);
+    try {
+      const contents = await this.client.getDirectoryContents(this.baseDir);
+      const photoFile = contents.find(item => item.filename.startsWith(`${id}_`) && !item.filename.endsWith('_metadata.json'));
+      const metadataFile = contents.find(item => item.filename === `${id}_metadata.json`);
 
-    if (photoFile) {
-      await this.client.deleteFile(photoFile.filename);
-    }
-    if (metadataFile) {
-      await this.client.deleteFile(metadataFile.filename);
+      if (photoFile) {
+        await this.client.deleteFile(`${this.baseDir}/${photoFile.filename}`);
+      }
+      if (metadataFile) {
+        await this.client.deleteFile(`${this.baseDir}/${metadataFile.filename}`);
+      }
+    } catch (error) {
+      console.error(`Error deleting photo ${id}:`, error);
+      throw error;
     }
   }
 
   async clearPhotos(): Promise<void> {
-    const contents = await this.client.getDirectoryContents(this.baseDir);
-    for (const item of contents) {
-      await this.client.deleteFile(item.filename);
+    try {
+      const contents = await this.client.getDirectoryContents(this.baseDir);
+      for (const item of contents) {
+        await this.client.deleteFile(`${this.baseDir}/${item.filename}`);
+      }
+    } catch (error) {
+      console.error('Error clearing photos:', error);
+      throw error;
     }
   }
 }
