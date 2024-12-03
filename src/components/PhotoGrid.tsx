@@ -1,11 +1,20 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { X } from 'lucide-react';
 import { usePhotoStore } from '../store/usePhotoStore';
+import { useSortStore } from '../store/useSortStore';
 import { PhotoViewer } from './PhotoViewer';
 
 export const PhotoGrid: React.FC = () => {
   const { photos, removePhoto } = usePhotoStore();
+  const { order } = useSortStore();
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+
+  const sortedPhotos = useMemo(() => {
+    return [...photos].sort((a, b) => {
+      const comparison = a.lastModified - b.lastModified;
+      return order === 'desc' ? -comparison : comparison;
+    });
+  }, [photos, order]);
 
   const handlePhotoClick = (index: number) => {
     setSelectedIndex(index);
@@ -18,7 +27,7 @@ export const PhotoGrid: React.FC = () => {
   return (
     <>
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-        {photos.map((photo, index) => (
+        {sortedPhotos.map((photo, index) => (
           <div 
             key={photo.id} 
             className="relative group cursor-pointer"
@@ -47,7 +56,7 @@ export const PhotoGrid: React.FC = () => {
 
       {selectedIndex !== null && (
         <PhotoViewer
-          photos={photos}
+          photos={sortedPhotos}
           initialIndex={selectedIndex}
           onClose={handleClose}
         />

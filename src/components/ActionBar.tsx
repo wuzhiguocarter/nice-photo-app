@@ -1,10 +1,12 @@
 import React from 'react';
-import { Download, Trash2 } from 'lucide-react';
+import { Download, Trash2, ArrowUpDown } from 'lucide-react';
 import { usePhotoStore } from '../store/usePhotoStore';
+import { useSortStore } from '../store/useSortStore';
 import { downloadPhotos } from '../utils/photoHelpers';
 
 export const ActionBar: React.FC = () => {
   const { photos, clearPhotos } = usePhotoStore();
+  const { order, toggleOrder } = useSortStore();
 
   const handleDownload = async () => {
     if (photos.length === 0) return;
@@ -13,8 +15,17 @@ export const ActionBar: React.FC = () => {
 
   return (
     <div className="flex justify-between items-center p-4 bg-white shadow-sm rounded-lg">
-      <div className="text-gray-700">
-        已选择 {photos.length} 张照片
+      <div className="flex items-center gap-4">
+        <div className="text-gray-700">
+          已选择 {photos.length} 张照片
+        </div>
+        <button
+          onClick={toggleOrder}
+          className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+        >
+          <ArrowUpDown className="w-4 h-4" />
+          {order === 'desc' ? '最新在前' : '最早在前'}
+        </button>
       </div>
       <div className="flex gap-4">
         <button
