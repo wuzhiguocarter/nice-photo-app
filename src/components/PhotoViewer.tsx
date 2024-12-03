@@ -58,6 +58,12 @@ export const PhotoViewer: React.FC<PhotoViewerProps> = ({
     }
   };
 
+  const handleBackdropClick = (e: React.MouseEvent) => {
+    if (e.target === e.currentTarget) {
+      onClose();
+    }
+  };
+
   const slideVariants = {
     enter: (direction: number) => ({
       x: direction > 0 ? 1000 : -1000,
@@ -76,26 +82,38 @@ export const PhotoViewer: React.FC<PhotoViewerProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-90 z-50 flex items-center justify-center">
+    <div 
+      className="fixed inset-0 bg-black bg-opacity-90 z-50 flex items-center justify-center"
+      onClick={handleBackdropClick}
+    >
       <button
-        onClick={onClose}
-        className="absolute top-4 right-4 text-white p-2 hover:bg-white/10 rounded-full transition-colors"
+        onClick={(e) => {
+          e.stopPropagation();
+          onClose();
+        }}
+        className="absolute top-4 right-4 text-white p-2 hover:bg-white/10 rounded-full transition-colors z-50"
       >
         <X className="w-6 h-6" />
       </button>
 
       <button
-        onClick={handlePrevious}
+        onClick={(e) => {
+          e.stopPropagation();
+          handlePrevious();
+        }}
         disabled={currentIndex === 0}
-        className="absolute left-4 text-white p-2 hover:bg-white/10 rounded-full transition-colors disabled:opacity-50"
+        className="absolute left-4 text-white p-2 hover:bg-white/10 rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed z-50"
       >
         <ChevronLeft className="w-6 h-6" />
       </button>
 
       <button
-        onClick={handleNext}
+        onClick={(e) => {
+          e.stopPropagation();
+          handleNext();
+        }}
         disabled={currentIndex === photos.length - 1}
-        className="absolute right-4 text-white p-2 hover:bg-white/10 rounded-full transition-colors disabled:opacity-50"
+        className="absolute right-4 text-white p-2 hover:bg-white/10 rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed z-50"
       >
         <ChevronRight className="w-6 h-6" />
       </button>
@@ -119,6 +137,7 @@ export const PhotoViewer: React.FC<PhotoViewerProps> = ({
             onDragStart={handleDragStart}
             onDragEnd={handleDragEnd}
             className="absolute w-full h-full flex items-center justify-center"
+            onClick={(e) => e.stopPropagation()}
           >
             <img
               src={photos[currentIndex].url}
@@ -131,7 +150,7 @@ export const PhotoViewer: React.FC<PhotoViewerProps> = ({
         </AnimatePresence>
       </div>
 
-      <div className="absolute bottom-4 left-0 right-0 text-center text-white">
+      <div className="absolute bottom-4 left-0 right-0 text-center text-white z-50">
         <p className="text-sm">
           {currentIndex + 1} / {photos.length}
         </p>
