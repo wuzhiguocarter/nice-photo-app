@@ -17,6 +17,7 @@ export const PhotoViewer: React.FC<PhotoViewerProps> = ({
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
   const [direction, setDirection] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -30,14 +31,14 @@ export const PhotoViewer: React.FC<PhotoViewerProps> = ({
   }, [currentIndex, onClose]);
 
   const handlePrevious = () => {
-    if (currentIndex > 0) {
+    if (currentIndex > 0 && !isLoading) {
       setDirection(-1);
       setCurrentIndex(currentIndex - 1);
     }
   };
 
   const handleNext = () => {
-    if (currentIndex < photos.length - 1) {
+    if (currentIndex < photos.length - 1 && !isLoading) {
       setDirection(1);
       setCurrentIndex(currentIndex + 1);
     }
@@ -101,7 +102,7 @@ export const PhotoViewer: React.FC<PhotoViewerProps> = ({
           e.stopPropagation();
           handlePrevious();
         }}
-        disabled={currentIndex === 0}
+        disabled={currentIndex === 0 || isLoading}
         className="absolute left-4 text-white p-2 hover:bg-white/10 rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed z-50"
       >
         <ChevronLeft className="w-6 h-6" />
@@ -112,7 +113,7 @@ export const PhotoViewer: React.FC<PhotoViewerProps> = ({
           e.stopPropagation();
           handleNext();
         }}
-        disabled={currentIndex === photos.length - 1}
+        disabled={currentIndex === photos.length - 1 || isLoading}
         className="absolute right-4 text-white p-2 hover:bg-white/10 rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed z-50"
       >
         <ChevronRight className="w-6 h-6" />
@@ -140,11 +141,14 @@ export const PhotoViewer: React.FC<PhotoViewerProps> = ({
             onClick={(e) => e.stopPropagation()}
           >
             <img
-              src={photos[currentIndex].url}
+              src={photos[currentIndex].originalUrl}
               alt={photos[currentIndex].name}
               className={`max-h-[90vh] max-w-[90vw] object-contain ${
                 isDragging ? 'cursor-grabbing' : 'cursor-grab'
               }`}
+              onLoadStart={() => setIsLoading(true)}
+              onLoad={() => setIsLoading(false)}
+              onError={() => setIsLoading(false)}
             />
           </motion.div>
         </AnimatePresence>
@@ -155,6 +159,12 @@ export const PhotoViewer: React.FC<PhotoViewerProps> = ({
           {currentIndex + 1} / {photos.length}
         </p>
       </div>
+
+      {isLoading && (
+        <div className="absolute inset-0 flex items-center justify-center">
+          <div className="text-white">加载中...</div>
+        </div>
+      )}
     </div>
   );
 };

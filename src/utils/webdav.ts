@@ -1,10 +1,12 @@
 import { createClient, WebDAVClient } from 'webdav';
 import { Photo } from '../types/photo';
+import { generateThumbnail } from './imageProcessor';
 
 export class WebDAVStorage {
   private client: WebDAVClient;
   private baseDir: string = '/didi-team-photos';
   private metaDir: string = '/didi-team-photos/metadata';
+  private thumbnailDir: string = '/didi-team-photos/thumbnails';
 
   constructor() {
     const webdavUrl = import.meta.env.VITE_WEBDAV_URL || '';
@@ -19,14 +21,12 @@ export class WebDAVStorage {
 
   private async ensureDirectories() {
     try {
-      const baseExists = await this.client.exists(this.baseDir);
-      if (!baseExists) {
-        await this.client.createDirectory(this.baseDir);
-      }
-
-      const metaExists = await this.client.exists(this.metaDir);
-      if (!metaExists) {
-        await this.client.createDirectory(this.metaDir);
+      const dirs = [this.baseDir, this.metaDir, this.thumbnailDir];
+      for (const dir of dirs) {
+        const exists = await this.client.exists(dir);
+        if (!exists) {
+          await this.client.createDirectory(dir);
+        }
       }
     } catch (error) {
       console.error('Error ensuring directories exist:', error);
@@ -39,14 +39,24 @@ export class WebDAVStorage {
     
     for (const photo of photos) {
       try {
+        // Upload original photo
         const buffer = await photo.file.arrayBuffer();
         const photoPath = `${this.baseDir}/${photo.id}_${photo.name}`;
-        
         await this.client.putFileContents(photoPath, buffer, {
           contentLength: buffer.byteLength,
           overwrite: true
         });
 
+        // Generate and upload thumbnail
+        const thumbnail = await generateThumbnail(photo.file);
+        const thumbnailBuffer = await thumbnail.arrayBuffer();
+        const thumbnailPath = `${this.thumbnailDir}/${photo.id}_${photo.name}`;
+        await this.client.putFileContents(thumbnailPath, thumbnailBuffer, {
+          contentLength: thumbnailBuffer.byteLength,
+          overwrite: true
+        });
+
+        // Save metadata
         const metadataPath = `${this.metaDir}/${photo.id}.json`;
         const metadata = {
           id: photo.id,
@@ -71,6 +81,7 @@ export class WebDAVStorage {
     try {
       const metaContents = await this.client.getDirectoryContents(this.metaDir);
       const photoContents = await this.client.getDirectoryContents(this.baseDir);
+      const thumbnailContents = await this.client.getDirectoryContents(this.thumbnailDir);
       const photos: Photo[] = [];
       
       for (const metaFile of metaContents) {
@@ -84,17 +95,30 @@ export class WebDAVStorage {
           
           const photoFile = photoContents.find(item => 
             item.basename.startsWith(`${metadata.id}_`) && 
-            !item.filename.includes('/metadata/')
+            !item.filename.includes('/metadata/') &&
+            !item.filename.includes('/thumbnails/')
+          );
+
+          const thumbnailFile = thumbnailContents.find(item =>
+            item.basename.startsWith(`${metadata.id}_`)
           );
           
-          if (photoFile) {
+          if (photoFile && thumbnailFile) {
+            // Load original photo for file property
             const photoContent = await this.client.getFileContents(photoFile.filename, { 
               format: 'binary' 
             });
+
+            // Load thumbnail for display
+            const thumbnailContent = await this.client.getFileContents(thumbnailFile.filename, {
+              format: 'binary'
+            });
             
-            if (photoContent instanceof ArrayBuffer) {
-              const blob = new Blob([photoContent], { type: metadata.type });
-              const file = new File([blob], metadata.name, {
+            if (photoContent instanceof ArrayBuffer && thumbnailContent instanceof ArrayBuffer) {
+              const photoBlob = new Blob([photoContent], { type: metadata.type });
+              const thumbnailBlob = new Blob([thumbnailContent], { type: metadata.type });
+
+              const file = new File([photoBlob], metadata.name, {
                 type: metadata.type,
                 lastModified: metadata.lastModified,
               });
@@ -102,7 +126,8 @@ export class WebDAVStorage {
               photos.push({
                 ...metadata,
                 file,
-                url: URL.createObjectURL(file),
+                url: URL.createObjectURL(thumbnailBlob),
+                originalUrl: URL.createObjectURL(photoBlob),
               });
             }
           }
@@ -123,26 +148,30 @@ export class WebDAVStorage {
     
     try {
       const photoContents = await this.client.getDirectoryContents(this.baseDir);
+      const thumbnailContents = await this.client.getDirectoryContents(this.thumbnailDir);
       
-      // Find photo file
+      // Find and delete original photo
       const photoFile = photoContents.find(item => 
         item.basename.startsWith(`${id}_`) && 
-        !item.filename.includes('/metadata/')
+        !item.filename.includes('/metadata/') &&
+        !item.filename.includes('/thumbnails/')
       );
-
-      // Delete photo file
       if (photoFile) {
         await this.client.deleteFile(photoFile.filename);
       }
 
-      // Delete metadata file
+      // Find and delete thumbnail
+      const thumbnailFile = thumbnailContents.find(item =>
+        item.basename.startsWith(`${id}_`)
+      );
+      if (thumbnailFile) {
+        await this.client.deleteFile(thumbnailFile.filename);
+      }
+
+      // Delete metadata
       const metadataPath = `${this.metaDir}/${id}.json`;
       if (await this.client.exists(metadataPath)) {
         await this.client.deleteFile(metadataPath);
-      }
-
-      if (!photoFile && !await this.client.exists(metadataPath)) {
-        console.warn(`No files found for photo ID: ${id}`);
       }
     } catch (error) {
       console.error(`Error deleting photo ${id}:`, error);
@@ -154,17 +183,13 @@ export class WebDAVStorage {
     await this.ensureDirectories();
     
     try {
-      // Clear metadata directory
-      const metaContents = await this.client.getDirectoryContents(this.metaDir);
-      for (const item of metaContents) {
-        await this.client.deleteFile(item.filename);
-      }
-
-      // Clear photos from base directory (excluding metadata directory)
-      const photoContents = await this.client.getDirectoryContents(this.baseDir);
-      for (const item of photoContents) {
-        if (!item.filename.includes('/metadata/')) {
-          await this.client.deleteFile(item.filename);
+      const dirs = [this.metaDir, this.thumbnailDir, this.baseDir];
+      for (const dir of dirs) {
+        const contents = await this.client.getDirectoryContents(dir);
+        for (const item of contents) {
+          if (!item.filename.endsWith('/')) {
+            await this.client.deleteFile(item.filename);
+          }
         }
       }
     } catch (error) {
